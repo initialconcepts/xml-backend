@@ -5,46 +5,37 @@ import xmltodict
 app = Flask(__name__)
 CORS(app)
 
-def safe_int(value):
-    """Convert to int safely, default 0"""
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return 0
-
-def parse_teams_stats(xml_dict):
+def extract_stats(obj):
+    """
+    Recursively extract all numeric stats from XML parsed dict.
+    Returns a flat dict of key-value pairs.
+    """
     stats = {}
-    try:
-        game = xml_dict.get('bsgame', {})
-        linescores = game.get('linescore', {})
-        teams = linescores.get('team', [])
 
-        # Ensure teams is a list
-        if isinstance(teams, dict):
-            teams = [teams]
-
-        for team in teams:
-            name = team.get('@name', 'Unknown Team')
-            
-            # Some XML has totals nested inside <totals> tags
-            totals = team.get('totals', {})
-            hitting = totals.get('hitting', {})
-            fielding = totals.get('fielding', {})
-
-            stats[name] = {
-                'AB': safe_int(hitting.get('@ab')),
-                'R': safe_int(hitting.get('@r')),
-                'H': safe_int(hitting.get('@h')),
-                'RBI': safe_int(hitting.get('@rbi')),
-                'BB': safe_int(hitting.get('@bb')),
-                'SO': safe_int(hitting.get('@so')),
-                'SB': safe_int(hitting.get('@sb')),
-                'E': safe_int(fielding.get('@e')),
-                'LOB': safe_int(team.get('@LOB'))  # sometimes LOB is directly under team
-            }
-
-    except Exception as e:
-        print("Error parsing team stats:", e)
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            # If value is a dict with '#text', unwrap it
+            if isinstance(v, dict) and '#text' in v:
+                try:
+                    stats[k] = float(v['#text'])
+                except:
+                    stats[k] = 0
+            elif isinstance(v, dict) or isinstance(v, list):
+                # Recursively extract from nested dict/list
+                nested = extract_stats(v)
+                for nk, nv in nested.items():
+                    stats[f"{k}.{nk}"] = nv
+            else:
+                # Attempt to convert directly to float
+                try:
+                    stats[k] = float(v)
+                except:
+                    stats[k] = 0
+    elif isinstance(obj, list):
+        for idx, item in enumerate(obj):
+            nested = extract_stats(item)
+            for nk, nv in nested.items():
+                stats[f"{idx}.{nk}"] = nv
     return stats
 
 @app.route("/upload-event", methods=["POST"])
@@ -55,11 +46,13 @@ def upload_event():
     xml_file = request.files['xmlFile']
     try:
         xml_content = xml_file.read()
-        data = xmltodict.parse(xml_content)
-        stats = parse_teams_stats(data)
+        print("Raw XML received:", xml_content.decode())  # log for debugging
 
-        if not stats:
-            return jsonify({"success": False, "error": "No team stats found in XML"})
+        data = xmltodict.parse(xml_content)
+        print("Parsed XML dict:", data)
+
+        # Extract stats from entire XML
+        stats = extract_stats(data)
 
         return jsonify({"success": True, "stats": stats})
 
