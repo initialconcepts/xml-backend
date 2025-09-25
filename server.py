@@ -6,14 +6,6 @@ app = Flask(__name__)
 CORS(app)
 
 def parse_teams_stats(xml_dict):
-    """
-    Extract team stats from XML dict and return structured stats.
-    Expected output:
-    {
-        "Shockwave-Floyd": {...},
-        "ASU Three Rivers": {...}
-    }
-    """
     stats = {}
     try:
         game = xml_dict.get('bsgame', {})
@@ -39,7 +31,6 @@ def parse_teams_stats(xml_dict):
         print("Error parsing team stats:", e)
     return stats
 
-
 @app.route("/upload-event", methods=["POST"])
 def upload_event():
     if 'xmlFile' not in request.files:
@@ -49,16 +40,16 @@ def upload_event():
     try:
         xml_content = xml_file.read()
         data = xmltodict.parse(xml_content)
+        stats = parse_teams_stats(data)  # Use the safe team stats parser
 
-        # Parse stats by team
-        stats = parse_bsgame_stats(data)
+        if not stats:
+            return jsonify({"success": False, "error": "No team stats found in XML"})
 
         return jsonify({"success": True, "stats": stats})
 
     except Exception as e:
         print("XML parse error:", e)
         return jsonify({"success": False, "error": "Failed to parse XML"})
-
 
 if __name__ == "__main__":
     import os
