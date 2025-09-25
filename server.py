@@ -5,47 +5,40 @@ import xmltodict
 app = Flask(__name__)
 CORS(app)
 
-def parse_bsgame_stats(bsgame):
+def parse_teams_stats(xml_dict):
     """
-    Convert the bsgame XML dict into a per-team stats dictionary.
+    Extract team stats from XML dict and return structured stats.
+    Expected output:
+    {
+        "Shockwave-Floyd": {...},
+        "ASU Three Rivers": {...}
+    }
     """
-    team_stats = {}
-
+    stats = {}
     try:
-        # Navigate to plays → inning → batting
-        innings = bsgame.get('bsgame', {}).get('plays', {}).get('inning', [])
-        if not isinstance(innings, list):
-            innings = [innings]
+        game = xml_dict.get('bsgame', {})
+        linescores = game.get('linescore', {})
+        teams = linescores.get('team', [])
+        if isinstance(teams, dict):
+            teams = [teams]
 
-        for inning in innings:
-            batting_list = inning.get('batting', [])
-            if not isinstance(batting_list, list):
-                batting_list = [batting_list]
-
-            for batting in batting_list:
-                team_name = batting.get('@team') or batting.get('@name') or "Unknown Team"
-                if team_name not in team_stats:
-                    # initialize basic stats
-                    team_stats[team_name] = {'AB':0,'R':0,'H':0,'RBI':0,'BB':0,'SO':0,'SB':0,'E':0,'LOB':0}
-
-                plays = batting.get('play', [])
-                if not isinstance(plays, list):
-                    plays = [plays]
-
-                for play in plays:
-                    # Example: add simple dummy counts; adapt based on your XML structure
-                    batter = play.get('batter', {})
-                    # This depends on your XML keys
-                    for stat in ['AB','R','H','RBI','BB','SO','SB','E','LOB']:
-                        val = batter.get(f"@{stat}", 0)
-                        try: val = int(val)
-                        except: val = 0
-                        team_stats[team_name][stat] += val
-
+        for team in teams:
+            name = team.get('@name', 'Unknown Team')
+            stats[name] = {
+                'AB': int(team.get('AB', 0)),
+                'R': int(team.get('R', 0)),
+                'H': int(team.get('H', 0)),
+                'RBI': int(team.get('RBI', 0)),
+                'BB': int(team.get('BB', 0)),
+                'SO': int(team.get('SO', 0)),
+                'SB': int(team.get('SB', 0)),
+                'E': int(team.get('E', 0)),
+                'LOB': int(team.get('LOB', 0)),
+            }
     except Exception as e:
-        print("Error parsing bsgame stats:", e)
+        print("Error parsing team stats:", e)
+    return stats
 
-    return team_stats
 
 @app.route("/upload-event", methods=["POST"])
 def upload_event():
