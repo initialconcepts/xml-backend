@@ -5,38 +5,47 @@ import xmltodict
 app = Flask(__name__)
 CORS(app)
 
-def extract_stats(obj):
+def parse_bsgame_stats(bsgame):
     """
-    Recursively extract all numeric stats from XML parsed dict.
-    Returns a flat dict of key-value pairs.
+    Convert the bsgame XML dict into a per-team stats dictionary.
     """
-    stats = {}
+    team_stats = {}
 
-    if isinstance(obj, dict):
-        for k, v in obj.items():
-            # If value is a dict with '#text', unwrap it
-            if isinstance(v, dict) and '#text' in v:
-                try:
-                    stats[k] = float(v['#text'])
-                except:
-                    stats[k] = 0
-            elif isinstance(v, dict) or isinstance(v, list):
-                # Recursively extract from nested dict/list
-                nested = extract_stats(v)
-                for nk, nv in nested.items():
-                    stats[f"{k}.{nk}"] = nv
-            else:
-                # Attempt to convert directly to float
-                try:
-                    stats[k] = float(v)
-                except:
-                    stats[k] = 0
-    elif isinstance(obj, list):
-        for idx, item in enumerate(obj):
-            nested = extract_stats(item)
-            for nk, nv in nested.items():
-                stats[f"{idx}.{nk}"] = nv
-    return stats
+    try:
+        # Navigate to plays → inning → batting
+        innings = bsgame.get('bsgame', {}).get('plays', {}).get('inning', [])
+        if not isinstance(innings, list):
+            innings = [innings]
+
+        for inning in innings:
+            batting_list = inning.get('batting', [])
+            if not isinstance(batting_list, list):
+                batting_list = [batting_list]
+
+            for batting in batting_list:
+                team_name = batting.get('@team') or batting.get('@name') or "Unknown Team"
+                if team_name not in team_stats:
+                    # initialize basic stats
+                    team_stats[team_name] = {'AB':0,'R':0,'H':0,'RBI':0,'BB':0,'SO':0,'SB':0,'E':0,'LOB':0}
+
+                plays = batting.get('play', [])
+                if not isinstance(plays, list):
+                    plays = [plays]
+
+                for play in plays:
+                    # Example: add simple dummy counts; adapt based on your XML structure
+                    batter = play.get('batter', {})
+                    # This depends on your XML keys
+                    for stat in ['AB','R','H','RBI','BB','SO','SB','E','LOB']:
+                        val = batter.get(f"@{stat}", 0)
+                        try: val = int(val)
+                        except: val = 0
+                        team_stats[team_name][stat] += val
+
+    except Exception as e:
+        print("Error parsing bsgame stats:", e)
+
+    return team_stats
 
 @app.route("/upload-event", methods=["POST"])
 def upload_event():
@@ -46,19 +55,17 @@ def upload_event():
     xml_file = request.files['xmlFile']
     try:
         xml_content = xml_file.read()
-        print("Raw XML received:", xml_content.decode())  # log for debugging
-
         data = xmltodict.parse(xml_content)
-        print("Parsed XML dict:", data)
 
-        # Extract stats from entire XML
-        stats = extract_stats(data)
+        # Parse stats by team
+        stats = parse_bsgame_stats(data)
 
         return jsonify({"success": True, "stats": stats})
 
     except Exception as e:
         print("XML parse error:", e)
         return jsonify({"success": False, "error": "Failed to parse XML"})
+
 
 if __name__ == "__main__":
     import os
