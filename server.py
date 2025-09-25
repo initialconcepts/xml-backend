@@ -15,16 +15,26 @@ def upload_event():
         xml_content = xml_file.read()
         data = xmltodict.parse(xml_content)
 
-        # Example XML: <stats><Points>20</Points><Assists>5</Assists></stats>
+        # Initialize stats dict
         stats = {}
-        if "stats" in data:
-            for key, value in data["stats"].items():
+
+        # Robust parsing: check for "stats" key
+        stats_data = data.get("stats", {})
+        if isinstance(stats_data, dict):
+            for key, value in stats_data.items():
+                # If value is a dict (xmltodict wraps text in '#text'), get '#text'
+                if isinstance(value, dict) and "#text" in value:
+                    value = value["#text"]
                 try:
                     stats[key] = float(value)
                 except:
                     stats[key] = 0
+        else:
+            # stats_data is empty or malformed
+            stats = {}
 
         return jsonify({"success": True, "stats": stats})
+
     except Exception as e:
         print("XML parse error:", e)
         return jsonify({"success": False, "error": "Failed to parse XML"})
