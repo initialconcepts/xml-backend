@@ -15,23 +15,39 @@ def upload_event():
         xml_content = xml_file.read()
         data = xmltodict.parse(xml_content)
 
-        # Initialize stats dict
         stats = {}
 
-        # Robust parsing: check for "stats" key
-        stats_data = data.get("stats", {})
-        if isinstance(stats_data, dict):
-            for key, value in stats_data.items():
-                # If value is a dict (xmltodict wraps text in '#text'), get '#text'
-                if isinstance(value, dict) and "#text" in value:
-                    value = value["#text"]
-                try:
-                    stats[key] = float(value)
-                except:
-                    stats[key] = 0
-        else:
-            # stats_data is empty or malformed
-            stats = {}
+        # Navigate to teams
+        teams = data.get('bsgame', {}).get('team', [])
+        if isinstance(teams, dict):
+            teams = [teams]  # ensure it's a list
+
+        for team in teams:
+            team_name = team.get('@name', 'Unknown Team')
+            stats[team_name] = {}
+
+            # Team totals
+            totals = team.get('totals', {})
+            stats[team_name]['totals'] = {
+                'hitting': {k: int(v) for k, v in totals.get('hitting', {}).items()},
+                'fielding': {k: int(v) for k, v in totals.get('fielding', {}).items()},
+                'pitching': {k: int(v) for k, v in totals.get('pitching', {}).items()},
+            }
+
+            # Players
+            players = team.get('player', [])
+            if isinstance(players, dict):
+                players = [players]
+
+            stats[team_name]['players'] = []
+            for player in players:
+                player_data = {
+                    'name': player.get('@name', 'Unknown'),
+                    'hitting': {k: int(v) for k, v in player.get('hitting', {}).items()},
+                    'fielding': {k: int(v) for k, v in player.get('fielding', {}).items()},
+                    'pitching': {k: int(v) for k, v in player.get('pitching', {}).items()},
+                }
+                stats[team_name]['players'].append(player_data)
 
         return jsonify({"success": True, "stats": stats})
 
